@@ -65,6 +65,7 @@ def update_user(given_json):
     # So over here we do he code if they don't want a new password
     try:
         newpass = given_json['new_password']
+        _email = given_json['email']
         if (check_password_hash(users.find_one({"email": _email})['hashed_password'], given_json['password'])):
             users.update_one({'email': given_json['email']}, {"$set": {'password': generate_password_hash(newpass)}})
             resp = jsonify("Password has been updated")

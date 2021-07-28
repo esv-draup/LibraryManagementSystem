@@ -1,31 +1,16 @@
-"""
-This program is purely to test code and has no importance to the LMS
-"""
-from bson.json_util import dumps
-from bson.objectid import ObjectId
-from flask import jsonify, request
-"""
-from flask_pymongo import PyMongo
+from flask import Flask, jsonify, request
+from flask_restful import Resource, Api
+from flask_pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
+from librarian.librarian import Librarian
+from book.book import Book
+from user.user import User
 
 app = Flask(__name__)
-app.secret_key = "secretkey"
-app.config["MONGO_URI"] "mongoDB://localhost:27017/somedatabase"
+api = Api(app)
 
-mongo = PyMongo(app)
-
-if(__name__ == "__main__"):
-    app.run(debug=True)
-"""
-getjson = {
-    'name': "Rohan",
-    'password': "heythere",
-    'new_password': "nothere"
-}
-if getjson['name']:
-    print("name exists")
-
-try:
-    print(getjson['not_here'])
-except:
-    print("This doesnt exist")
+api.add_resource(User, '/users')
+api.add_resource(Book, '/books')
+api.add_resource(Librarian, '/librarians')
+if __name__ == "__main__":
+    app.run()
