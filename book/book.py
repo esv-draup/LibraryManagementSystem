@@ -7,11 +7,11 @@ import datetime
 import smtplib
 
 
-def issue_mail(issued_or_unissued, book_name, user_email):
+def issue_mail(issued_or_unissued, book_name, user_email, due_date = ""):
     server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
     server.login("pythonlms.noreply@gmail.com", "pythonLMS")
     if (issued_or_unissued == "issued"):
-        msg = "You have issued the book " + book_name
+        msg = "You have issued the book " + book_name + " and your due date for returning is " + due_date
     else:
         msg = "You have returned the book " + book_name
     server.sendmail("sendingemail@gmail.com", user_email, msg)
@@ -170,7 +170,7 @@ class Book(Resource):
             }
             bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
             issue_mail("issued", bookDB.find_one({"book_id": _book_id})['book_name'],
-                       request.authorization['username'])
+                       request.authorization['username'], due_date=duedate)
             response = jsonify("Book successfully issued.")
             response.status_code = 200
             return response
