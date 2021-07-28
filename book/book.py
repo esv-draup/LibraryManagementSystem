@@ -4,6 +4,19 @@ from flask_pymongo import MongoClient
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 import datetime
+import smtplib
+
+
+def issue_mail(issued_or_unissued, book_name, user_email):
+    server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+    server.login("pythonlms.noreply@gmail.com", "pythonLMS")
+    if (issued_or_unissued == "issued"):
+        msg = "You have issued the book " + book_name
+    else:
+        msg = "You have returned the book " + book_name
+    server.sendmail("sendingemail@gmail.com", user_email, msg)
+    server.quit()
+
 
 client = MongoClient()
 db = client.LMS_DB
@@ -13,11 +26,6 @@ userDB = db.Users
 auth = HTTPBasicAuth()
 auth_lib = HTTPBasicAuth()
 auth_user = HTTPBasicAuth()
-
-
-class UserSession():
-    def __init__(self):
-        self.user_in_session = ""
 
 
 @auth.verify_password
@@ -41,13 +49,9 @@ def verify_lib(username, password):
         return False
 
 
-us = UserSession()
-
-
 @auth_user.verify_password
 def verify_user(username, password):
     if check_password_hash(userDB.find_one({"email": username})['password'], password):
-        us.user_in_session = username
         return True
     else:
         return False
@@ -132,17 +136,41 @@ class Book(Resource):
                 response = jsonify('No book with given bookID is in database, try again.')
                 response.status_code = 200
                 return response
-            if not(bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == us.user_in_session) and not(bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == ""):
+            if bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization['username']:
+                # time to return book
+                issued_dict = {
+                    "due_date": "",
+                    "user_name": ""
+                }
+                bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
+                user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
+                user_dict.pop(_book_id)
+                issue_mail("unissued", bookDB.find_one({"book_id": _book_id})['book_name'], request.authorization['username'])
+                userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
+                response = jsonify("Book successfully returned.")
+                response.status_code = 200
+                return response
+            if not (bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization[
+                'username']) and not (bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == ""):
                 response = jsonify('Book has already been issued to another user.')
                 response.status_code = 200
                 return response
             duedate = datetime.date.today() + datetime.timedelta(days=14)
             duedate = duedate.strftime("%d/%m/%Y")
+            user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
+            if len(user_dict) == 3:
+                response = jsonify('User cannot keep more than 3 issued books at once.')
+                response.status_code = 200
+                return response
+            user_dict[_book_id] = duedate
+            userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
             issued_dict = {
                 "due_date": duedate,
-                "user_name": us.user_in_session
+                "user_name": request.authorization['username']
             }
             bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
+            issue_mail("issued", bookDB.find_one({"book_id": _book_id})['book_name'],
+                       request.authorization['username'])
             response = jsonify("Book successfully issued.")
             response.status_code = 200
             return response

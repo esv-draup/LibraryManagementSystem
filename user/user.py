@@ -2,18 +2,55 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask import request, jsonify
 from flask_restful import Resource
 from flask_pymongo import MongoClient
+from flask_httpauth import HTTPBasicAuth
+
 
 client = MongoClient()
 db = client.LMS_DB
 userDB = db.Users
+librarianDB = db.Librarians
+auth = HTTPBasicAuth()
+auth_lib = HTTPBasicAuth()
+auth_user = HTTPBasicAuth()
+
+
+@auth.verify_password
+def verify(username, password):
+    try:
+        if check_password_hash(librarianDB.find_one({"email": username})['password'], password):
+            return True
+    except Exception as e:
+        if check_password_hash(userDB.find_one({"email": username})['password'], password):
+            return True
+    except:
+        return False
+
+
+@auth_lib.verify_password
+def verify_lib(username, password):
+    if check_password_hash(librarianDB.find_one({"email": username})['password'], password):
+        return True
+    else:
+        return False
+
+
+@auth_user.verify_password
+def verify_user(username, password):
+    if check_password_hash(userDB.find_one({"email": username})['password'], password):
+        return True
+    else:
+        return False
+
+
 class User(Resource):
     """
     For all the CRUD operations involving regular users of the library.
     """
 
     def __init__(self):
-        self.issued_books = []
+        self.issued_book = {}
 
+    # anyone can add users
     def post(self):
         """
         The post method will be called upon the POST request. It is the Create in CRUD
@@ -34,6 +71,7 @@ class User(Resource):
             return response
         return response
 
+    @auth_lib.login_required
     def get(self):
         """
         The get method will be called upon the GET request. It is the Read in CRUD
@@ -47,34 +85,33 @@ class User(Resource):
             dicta = {
                 'name': i['name'],
                 'email': i['email'],
-                'issued_books': i['issued_books']
+                'issued_book': i['issued_book']
             }
             dictlist.append(dicta)
         response = jsonify(dictlist)
         response.status_code = 200
         return response
 
-    def put(self):
-        """
-        The put method will be called upon the PUT request. It is the Update in CRUD
-        This is for updating users, with their issued books.
-        :return:
-        """
-        return
-
+    @auth.login_required
     def delete(self):
         """
         The delete method will be called upon the DELETE request. It is the Delete in CRUD
         :return:
         """
-        request_json = request.get_json()
-        _email = request_json['email']
-        if check_password_hash(userDB.find_one({"email": _email})['password'], request_json['password']):
+        librarian_user = False
+        try:
+            print(librarian_user)
+            librarianname = librarianDB.find_one({"email": request.authorization['username']})
+            librarian_user = True
+            print(librarian_user)
+        finally:
+            if (not (request.authorization['username'] == request.get_json()['email'])) and not librarian_user:
+                resp = jsonify("User cannot remove another user")
+                resp.status_code = 200
+                return resp
+            request_json = request.get_json()
+            _email = request_json['email']
             userDB.delete_one({"email": _email})
             resp = jsonify("User removed Successfully")
-            resp.status_code = 200
-            return resp
-        else:
-            resp = jsonify("Incorrect Password")
             resp.status_code = 200
             return resp
