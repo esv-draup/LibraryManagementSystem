@@ -7,7 +7,7 @@ import datetime
 import smtplib
 
 
-def issue_mail(issued_or_unissued, book_name, user_email, due_date = ""):
+def issue_mail(issued_or_unissued, book_name, user_email, due_date=""):
     server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
     server.login("pythonlms.noreply@gmail.com", "pythonLMS")
     if (issued_or_unissued == "issued"):
@@ -26,6 +26,54 @@ userDB = db.Users
 auth = HTTPBasicAuth()
 auth_lib = HTTPBasicAuth()
 auth_user = HTTPBasicAuth()
+
+
+def issue_book(_book_id):
+    duedate = datetime.date.today() + datetime.timedelta(days=14)
+    duedate = duedate.strftime("%d/%m/%Y")
+    user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
+    if len(user_dict) == 3:
+        response = jsonify('User cannot keep more than 3 issued books at once.')
+        response.status_code = 200
+        return response
+    user_dict[_book_id] = duedate
+    userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
+    issued_dict = {
+        "due_date": duedate,
+        "user_name": request.authorization['username']
+    }
+    bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
+    # issue_mail("issued", bookDB.find_one({"book_id": _book_id})['book_name'],request.authorization['username'], due_date=duedate)
+    response = jsonify("Book successfully issued.")
+    response.status_code = 200
+    return response
+
+
+def return_book(_book_id):
+    issued_dict = {
+        "due_date": "",
+        "user_name": ""
+    }
+    bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
+    user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
+    user_dict.pop(_book_id)
+    # issue_mail("unissued", bookDB.find_one({"book_id": _book_id})['book_name'], request.authorization['username'])
+    userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
+    response = jsonify("Book successfully returned.")
+    response.status_code = 200
+    return response
+
+
+def isNotInDatabase(book_id):
+    exists = True
+    response = ""
+    try:
+        doc = bookDB.find_one({"book_id": book_id})['book_id']
+    except:
+        exists = False
+        response = jsonify("Book does not exist in database, please try again")
+        response.status_code = 200
+    return exists, response
 
 
 @auth.verify_password
@@ -129,54 +177,74 @@ class Book(Resource):
         :return:
         """
         request_json = request.get_json()
-        try:
-            _book_id = request_json['book_id']
+        _book_id = request_json['book_id']
+        in_books_exists, response = isNotInDatabase(_book_id)
+        if not in_books_exists:
+            return response
+        # convert below one to issue book
+        if bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization['username']:
+            response = return_book(_book_id)
+            return response
+        if not (bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization[
+            'username']) and not (bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == ""):
+            response = jsonify('Book has already been issued to another user.')
+            response.status_code = 200
+            return response
+        else:
+            response = issue_book(_book_id)
+            return response
+        # try:
+
             # find in db, if not found, return error, else
-            if not (bookDB.find_one({"book_id": _book_id})['book_id']):
-                response = jsonify('No book with given bookID is in database, try again.')
-                response.status_code = 200
-                return response
-            if bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization['username']:
-                # time to return book
-                issued_dict = {
-                    "due_date": "",
-                    "user_name": ""
-                }
-                bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
-                user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
-                user_dict.pop(_book_id)
-                issue_mail("unissued", bookDB.find_one({"book_id": _book_id})['book_name'], request.authorization['username'])
-                userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
-                response = jsonify("Book successfully returned.")
-                response.status_code = 200
-                return response
-            if not (bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization[
-                'username']) and not (bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == ""):
-                response = jsonify('Book has already been issued to another user.')
-                response.status_code = 200
-                return response
-            duedate = datetime.date.today() + datetime.timedelta(days=14)
-            duedate = duedate.strftime("%d/%m/%Y")
-            user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
-            if len(user_dict) == 3:
-                response = jsonify('User cannot keep more than 3 issued books at once.')
-                response.status_code = 200
-                return response
-            user_dict[_book_id] = duedate
-            userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
-            issued_dict = {
-                "due_date": duedate,
-                "user_name": request.authorization['username']
-            }
-            bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
-            issue_mail("issued", bookDB.find_one({"book_id": _book_id})['book_name'],
-                       request.authorization['username'], due_date=duedate)
-            response = jsonify("Book successfully issued.")
-            response.status_code = 200
-            return response
-        except Exception as e:
-            response = jsonify("bookID not found in given input, try again.")
-            response.status_code = 200
-            print(e)
-            return response
+            # if not (bookDB.find_one({"book_id": _book_id})['book_id']):
+            #     response = jsonify('No book with given bookID is in database, try again.')
+            #     response.status_code = 200
+            #     return response
+            # if bookDB.find_one({"book_id": _book_id})['issued']['user_name'] == request.authorization['username']:
+            #     # time to return book
+            #     issued_dict = {
+            #         "due_date": "",
+            #         "user_name": ""
+            #     }
+            #     bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
+            #     user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
+            #     user_dict.pop(_book_id)
+            #     issue_mail("unissued", bookDB.find_one({"book_id": _book_id})['book_name'],request.authorization['username'])
+            #     userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
+            #     response = jsonify("Book successfully returned.")
+            #     response.status_code = 200
+            #     return response
+
+            # duedate = datetime.date.today() + datetime.timedelta(days=14)
+            # duedate = duedate.strftime("%d/%m/%Y")
+            # user_dict = userDB.find_one({"email": request.authorization['username']})['issued_book']
+            # if len(user_dict) == 3:
+            #     response = jsonify('User cannot keep more than 3 issued books at once.')
+            #     response.status_code = 200
+            #     return response
+            # user_dict[_book_id] = duedate
+            # userDB.update_one({"email": request.authorization['username']}, {"$set": {"issued_book": user_dict}})
+            # issued_dict = {
+            #     "due_date": duedate,
+            #     "user_name": request.authorization['username']
+            # }
+            # bookDB.update_one({"book_id": _book_id}, {"$set": {"issued": issued_dict}})
+            # # issue_mail("issued", bookDB.find_one({"book_id": _book_id})['book_name'],request.authorization['username'], due_date=duedate)
+            # response = jsonify("Book successfully issued.")
+            # response.status_code = 200
+            # return response
+        # except Exception as e:
+            # response = jsonify("bookID not found in given input, try again.")
+            # response.status_code = 200
+            # print(e)
+            # return response
         # we will take the person's email from here. Or from the authentication tab.
+
+    @auth_lib.login_required
+    def delete(self):
+        request_json = request.get_json()
+        _book_id = request_json['book_id']
+        bookDB.delete_one({"book_id": _book_id})
+        resp = jsonify("Book removed Successfully")
+        resp.status_code = 200
+        return resp

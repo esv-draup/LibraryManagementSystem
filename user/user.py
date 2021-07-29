@@ -100,18 +100,23 @@ class User(Resource):
         """
         librarian_user = False
         try:
-            print(librarian_user)
+            #print(librarian_user)
             librarianname = librarianDB.find_one({"email": request.authorization['username']})
-            librarian_user = True
-            print(librarian_user)
-        finally:
-            if (not (request.authorization['username'] == request.get_json()['email'])) and not librarian_user:
-                resp = jsonify("User cannot remove another user")
-                resp.status_code = 200
-                return resp
-            request_json = request.get_json()
-            _email = request_json['email']
-            userDB.delete_one({"email": _email})
-            resp = jsonify("User removed Successfully")
+            #print(librarianname)
+            if librarianname:
+                librarian_user = True
+            #print(librarian_user)
+        except Exception as e:
+            librarian_user = False
+            print(e)
+        print(request.authorization['username'],request.get_json()['email'], librarian_user)
+        if not (request.authorization['username'] == request.get_json()['email']) and not librarian_user:
+            resp = jsonify("User cannot remove another user")
             resp.status_code = 200
             return resp
+        request_json = request.get_json()
+        _email = request_json['email']
+        userDB.delete_one({"email": _email})
+        resp = jsonify("User removed Successfully")
+        resp.status_code = 200
+        return resp
